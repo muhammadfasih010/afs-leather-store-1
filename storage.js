@@ -1,3 +1,4 @@
+
 /* ============================================================
    storage.js
    Real cloud database layer — Firebase Realtime Database.
@@ -40,8 +41,17 @@ const firebaseConfig = {
   appId: "1:1067965421439:web:fc1cf12f541f1e04feac4a"
 };
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+// Guarded: if the Firebase SDK script failed to load (blocked, wrong
+// file uploaded, offline, etc.) this throwing would stop storage.js
+// dead — and since user.js / admin.js load after it, their code
+// (including the 5-click admin trigger) would never run either.
+let db = null;
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
+} catch(err) {
+  console.error('AFS Leather: Firebase failed to initialize — products/orders/login will not work until this is fixed:', err);
+}
 
 // ---- EmailJS (sends the OTP code to the user's email) ----
 // Create a free account at https://www.emailjs.com, add an Email Service
@@ -77,6 +87,7 @@ function toArray(val){
 // callback(products) fires immediately with the current data, then again
 // every time ANY device changes the products (admin edits, deletes, etc.)
 function watchProducts(callback){
+  if(!db){ console.error('AFS Leather: cannot load products — Firebase did not initialize.'); return; }
   const ref = db.ref('products');
   ref.on('value', snap => {
     const val = snap.val();
@@ -91,11 +102,13 @@ function watchProducts(callback){
   });
 }
 function saveProducts(products){
+  if(!db) return Promise.reject(new Error('Firebase did not initialize'));
   return db.ref('products').set(products);
 }
 
 // ---- Orders: live, shared across every device ----
 function watchOrders(callback){
+  if(!db){ console.error('AFS Leather: cannot load orders — Firebase did not initialize.'); return; }
   db.ref('orders').on('value', snap => {
     callback(toArray(snap.val()));
   }, err => {
@@ -103,6 +116,7 @@ function watchOrders(callback){
   });
 }
 function saveOrders(orders){
+  if(!db) return Promise.reject(new Error('Firebase did not initialize'));
   return db.ref('orders').set(orders);
 }
 
@@ -190,4 +204,4 @@ function sendOtpEmail(toEmail, toName, code){
     to_name: toName || '',
     otp_code: code
   });
-    }
+}
