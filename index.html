@@ -1,1 +1,274 @@
 
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AFS Leather — Custom leather, made slowly.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="user.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-mark" id="adminTrigger" title="Studio access">AFS</span>
+      <a href="#top" style="display:flex;align-items:center;gap:10px;"><span>AFS <i>Leather</i></span></a>
+    </div>
+    <nav>
+      <a href="#collection">Collections</a>
+      <a href="#studio">Studio</a>
+      <a href="#orders">Track order</a><a href="#" id="myOrdersNav">My Orders</a>
+    </nav>
+    <div id="authArea" style="margin-right:14px;"></div>
+    <a href="#orders" class="cart-button" onclick="document.getElementById('orders').scrollIntoView({behavior:'smooth'});return false;" style="margin-right:8px;">Track Your Order</a>
+    <button class="cart-button" data-open-cart>Bag <b id="cartCount">00</b></button>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-image" role="img" aria-label="Premium classic black leather jacket in an atelier"></div>
+      <div class="hero-shade"></div>
+      <div class="hero-copy">
+        <p class="eyebrow">AFS LEATHER / 01</p>
+        <h1>Genuine leather.<br><em>Custom tailored</em><br>for you.</h1>
+        <p>Quietly confident leather goods, made to order and designed to gather a better story over time.</p>
+        <a class="button gold" href="#collection">Explore the collection <span>↘</span></a>
+        <div class="hero-meta"><span>Est. 2012</span><span></span><span>Hand-finished in Pakistan</span></div>
+      </div>
+    </section>
+
+    <section class="manifesto">
+      <div>
+        <p class="eyebrow">Our point of view</p>
+        <h2>Objects that get<br><em>better with use.</em></h2>
+      </div>
+      <div>
+        <p>Leather is not a finish we apply. It is the beginning of the design. We cut slowly, keep the useful marks, and leave room for the material to become yours.</p>
+        <div class="stats">
+          <span><b>12 yrs</b>of quiet craft</span>
+          <span><b>01 of 01</b>made for you</span>
+          <span><b>48 hr</b>studio response</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="collection" id="collection">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">01 / Collection</p>
+          <h2>Built slowly.<br><em>Carried daily.</em></h2>
+        </div>
+        <p>Four essentials, made to order in the hide and hardware you choose.</p>
+      </div>
+      <div class="product-grid" id="productGrid"></div>
+    </section>
+
+    <section class="studio" id="studio">
+      <div class="studio-preview">
+        <img id="previewImage" alt="Selected product preview">
+        <span id="previewTint"></span>
+        <div class="preview-label">AFS<br><small>Made in studio</small></div>
+      </div>
+      <div class="studio-controls">
+        <p class="eyebrow">02 / Studio</p>
+        <h2>Make it yours.</h2>
+        <p>Choose a product, then use a replacement image or color code added by the studio.</p>
+        <div class="current-piece">
+          <span>Current piece</span>
+          <strong id="selectedName"></strong>
+          <b id="selectedPrice"></b>
+        </div>
+        <div id="optionGroups"></div>
+        <button class="button gold full" id="addToCart">Add to cart <span id="addPrice"></span> +</button>
+      </div>
+    </section>
+
+    <section class="orders-section" id="orders">
+      <div class="orders-bg-text">TRACK</div>
+      <div class="orders-inner">
+        <div class="orders-left">
+          <p class="eyebrow">03 / Order desk</p>
+          <h2 class="orders-heading">Keep an eye<br><em>on the journey.</em></h2>
+          <p class="orders-sub">Enter your order number below to see the latest update — whether it's being reviewed, packed, shipped, or delivered to your door.</p>
+          <div class="orders-steps">
+            <div class="orders-step"><span class="step-dot">01</span><span>Order placed</span></div>
+            <div class="orders-step-line"></div>
+            <div class="orders-step"><span class="step-dot">02</span><span>Accepted</span></div>
+            <div class="orders-step-line"></div>
+            <div class="orders-step"><span class="step-dot">03</span><span>Shipped</span></div>
+            <div class="orders-step-line"></div>
+            <div class="orders-step"><span class="step-dot">04</span><span>Delivered</span></div>
+          </div>
+        </div>
+        <div class="orders-right">
+          <div class="track-card">
+            <p class="eyebrow" style="margin-bottom:18px;">Enter order ID</p>
+            <form id="trackForm">
+              <div class="track-input-wrap">
+                <input id="trackId" placeholder="AFS-2026-0001" required autocomplete="off">
+                <button class="track-submit-btn" type="submit">Track <span>→</span></button>
+              </div>
+            </form>
+            <div id="trackResult" class="track-result-card" style="display:none"></div>
+            <div class="track-hint">Your order ID was sent with your order confirmation.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <!-- ================= AUTH MODAL (Login / Sign up / Forgot password) ================= -->
+  <div class="modal auth-modal" id="authModal">
+    <button class="close" data-close-auth>×</button>
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-auth-tab="login">Login</button>
+      <button class="auth-tab" data-auth-tab="signup">Sign Up</button>
+    </div>
+
+    <form id="loginForm" class="auth-panel active">
+      <p class="eyebrow">Welcome back</p>
+      <h2>Login to your account</h2>
+      <input id="loginEmail" type="email" placeholder="Email address" required autocomplete="email">
+      <input id="loginPassword" type="password" placeholder="Password" required autocomplete="current-password">
+      <p class="auth-error" id="loginError"></p>
+      <button class="button gold full" type="submit">Login →</button>
+      <a href="#" id="forgotPasswordLink" class="auth-link">Forgot password?</a>
+    </form>
+
+    <form id="signupForm" class="auth-panel">
+      <p class="eyebrow">New here?</p>
+      <h2>Create your account</h2>
+      <p class="auth-note">Order place karne ke liye ek account chahiye — 1 minute lagega.</p>
+      <input id="signupName" placeholder="Full name" required autocomplete="name">
+      <input id="signupEmail" type="email" placeholder="Email address" required autocomplete="email">
+      <input id="signupPhone" placeholder="Phone number, e.g. 03001234567" required autocomplete="tel">
+      <select id="signupCity" required>
+      <option value="">Select city</option>
+      <option>Karachi</option>
+      <option>Lahore</option>
+      <option>Islamabad</option>
+      <option>Rawalpindi</option>
+      <option>Faisalabad</option>
+      <option>Multan</option>
+      <option>Peshawar</option>
+      <option>Quetta</option>
+      <option>Sialkot</option>
+      <option>Gujranwala</option>
+      <option>Hyderabad</option>
+      <option>Bahawalpur</option>
+      <option>Sargodha</option>
+      <option>Sukkur</option>
+      <option>Sheikhupura</option>
+      <option>Gujrat</option>
+      <option>Kasur</option>
+      <option>Sahiwal</option>
+      <option>Okara</option>
+      <option>Abbottabad</option>
+      <option>Mardan</option>
+      <option>Muzaffargarh</option>
+      <option>Jhang</option>
+      <option>Chiniot</option>
+      <option>Mingora</option>
+      <option value="Other">Other</option>
+      </select>
+      <input id="signupCityOther" placeholder="Apna city likho" style="display:none">
+      <textarea id="signupAddress" placeholder="Complete address" required></textarea>
+      <input id="signupPostal" placeholder="Postal code" required>
+      <input id="signupPassword" type="password" placeholder="Password (min 6 characters)" required autocomplete="new-password">
+      <input id="signupConfirmPassword" type="password" placeholder="Confirm password" required autocomplete="new-password">
+      <p class="auth-error" id="signupError"></p>
+      <button class="button gold full" type="submit">Sign Up →</button>
+    </form>
+
+    <form id="forgotStep1Form" class="auth-panel">
+      <p class="eyebrow">Reset password</p>
+      <h2>Enter your email</h2>
+      <p class="auth-note">Aapke email par ek 6-digit OTP code bhejenge.</p>
+      <input id="fpEmail" type="email" placeholder="Email address" required>
+      <p class="auth-error" id="fpStep1Error"></p>
+      <button class="button gold full" type="submit">Send OTP →</button>
+      <a href="#" id="backToLoginLink" class="auth-link">Back to login</a>
+    </form>
+
+    <form id="forgotStep2Form" class="auth-panel">
+      <p class="eyebrow">Check your email</p>
+      <h2>Enter the OTP & new password</h2>
+      <input id="fpOtp" placeholder="6-digit OTP" maxlength="6" required>
+      <input id="fpNewPassword" type="password" placeholder="New password" required autocomplete="new-password">
+      <input id="fpConfirmPassword" type="password" placeholder="Confirm new password" required autocomplete="new-password">
+      <p class="auth-error" id="fpStep2Error"></p>
+      <button class="button gold full" type="submit">Reset password →</button>
+    </form>
+
+    <form id="signupOtpForm" class="auth-panel">
+      <p class="eyebrow">Verify your email</p>
+      <h2>OTP Enter karo</h2>
+      <p class="signup-otp-hint" style="color:var(--muted);font-size:12px;margin:0;"></p>
+      <input id="signupOtpInput" placeholder="6-digit OTP" maxlength="6" required autocomplete="one-time-code">
+      <p class="auth-error" id="signupOtpError"></p>
+      <button class="button gold full" type="submit">Verify & Sign Up →</button>
+    </form>
+  </div>
+  <!-- My Orders Drawer -->
+  <aside class="drawer" id="myOrdersDrawer" style="overflow-y:auto;">
+    <button class="close" id="closeMyOrders">×</button>
+    <p class="eyebrow" style="margin-top:8px;">Your purchases</p>
+    <h2 style="margin-bottom:24px;">My <em style="font-family:var(--serif);font-style:italic;color:var(--gold);">Orders</em></h2>
+    <div id="myOrdersList"></div>
+  </aside>
+  <!-- Password modal (Studio access) -->
+  <div class="pw-modal" id="pwModal">
+    <div class="pw-box">
+      <p class="eyebrow">Studio Access</p>
+      <h3>Enter password</h3>
+      <input type="password" id="pwInput" placeholder="••••••••" maxlength="30">
+      <p class="pw-error" id="pwError"></p>
+      <button class="pw-submit" id="pwSubmit">Unlock →</button>
+      <button class="pw-cancel" id="pwCancel">Cancel</button>
+    </div>
+  </div>
+  <footer>
+    <a class="brand" href="#top"><span class="brand-mark">AFS</span><span>AFS <i>Leather</i></span></a>
+    <p>Custom leather goods for a life well carried.</p>
+    <a href="#studio">Back to studio ↗</a>
+  </footer>
+  <aside class="drawer" id="cartDrawer">
+    <button class="close" data-close-cart>×</button>
+    <p class="eyebrow">YOUR SELECTION</p>
+    <h2>Your bag</h2>
+    <div id="cartItems"></div>
+    <div class="cart-total"><span>Estimated total</span><b id="cartTotal">Rs. 0</b></div>
+    <button class="button gold full" id="checkout">Proceed to checkout →</button>
+  </aside>
+  <div class="modal" id="checkoutModal">
+    <button class="close" data-close-checkout>×</button>
+    <p class="eyebrow">CONFIRM YOUR ORDER</p>
+    <h2>Let's send it<br><em>to you.</em></h2>
+    <form id="checkoutForm">
+      <input id="customerName" placeholder="Full name" required>
+      <input id="customerPhone" placeholder="Phone number" required>
+      <textarea id="customerAddress" placeholder="Complete delivery address" required></textarea>
+      <input id="customerPostal" placeholder="Postal code" required>
+      <select id="payment">
+        <option>Cash on Delivery (COD)</option>
+        <option>JazzCash</option>
+        <option>EasyPaisa</option>
+      </select>
+      <button class="button gold full" type="submit">Place order →</button>
+    </form>
+    <p class="checkout-note">Demo checkout — no payment is charged.</p>
+  </div>
+
+  <div class="backdrop" id="backdrop"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script src="config.js"></script>
+  <script src="storage.js"></script>
+  <script src="api.js"></script>
+  <script src="user.js"></script>
+</body>
+          </html>
+  
