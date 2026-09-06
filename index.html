@@ -1,274 +1,440 @@
+/* ============================================================
+   auth.js
+   Customer accounts: signup, login, forgot-password (email OTP),
+   and keeping the logged-in state on this device.
+   Depends on: config.js, storage.js (must load before this).
+   ============================================================ */
 
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AFS Leather — Custom leather, made slowly.</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="user.css">
-</head>
-<body>
-  <header class="site-header">
-    <div class="brand">
-      <span class="brand-mark" id="adminTrigger" title="Studio access">AFS</span>
-      <a href="#top" style="display:flex;align-items:center;gap:10px;"><span>AFS <i>Leather</i></span></a>
-    </div>
-    <nav>
-      <a href="#collection">Collections</a>
-      <a href="#studio">Studio</a>
-      <a href="#orders">Track order</a><a href="#" id="myOrdersNav">My Orders</a>
-    </nav>
-    <div id="authArea" style="margin-right:14px;"></div>
-    <a href="#orders" class="cart-button" onclick="document.getElementById('orders').scrollIntoView({behavior:'smooth'});return false;" style="margin-right:8px;">Track Your Order</a>
-    <button class="cart-button" data-open-cart>Bag <b id="cartCount">00</b></button>
-  </header>
+let pendingCheckoutAfterAuth = false;
+let fpEmailForReset = '';
 
-  <main id="top">
-    <section class="hero">
-      <div class="hero-image" role="img" aria-label="Premium classic black leather jacket in an atelier"></div>
-      <div class="hero-shade"></div>
-      <div class="hero-copy">
-        <p class="eyebrow">AFS LEATHER / 01</p>
-        <h1>Genuine leather.<br><em>Custom tailored</em><br>for you.</h1>
-        <p>Quietly confident leather goods, made to order and designed to gather a better story over time.</p>
-        <a class="button gold" href="#collection">Explore the collection <span>↘</span></a>
-        <div class="hero-meta"><span>Est. 2012</span><span></span><span>Hand-finished in Pakistan</span></div>
-      </div>
-    </section>
+// ---- Session (this device only — "don't sign up again here") ----
+function getCurrentUser(){
+  const raw = localStorage.getItem('afs-current-user');
+  return raw ? JSON.parse(raw) : null;
+}
+function setCurrentUser(user){
+  localStorage.setItem('afs-current-user', JSON.stringify(user));
+}
+function clearCurrentUser(){
+  localStorage.removeItem('afs-current-user');
+}
 
-    <section class="manifesto">
-      <div>
-        <p class="eyebrow">Our point of view</p>
-        <h2>Objects that get<br><em>better with use.</em></h2>
-      </div>
-      <div>
-        <p>Leather is not a finish we apply. It is the beginning of the design. We cut slowly, keep the useful marks, and leave room for the material to become yours.</p>
-        <div class="stats">
-          <span><b>12 yrs</b>of quiet craft</span>
-          <span><b>01 of 01</b>made for you</span>
-          <span><b>48 hr</b>studio response</span>
-        </div>
-      </div>
-    </section>
+function updateAuthUI(){
+  const area = $('#authArea');
+  if(!area) return;
+  const user = getCurrentUser();
+  if(user){
+    area.innerHTML = `<span class="auth-user-chip">Hi, ${(user.name||'').split(' ')[0]||'there'} <button class="auth-logout-btn" id="logoutBtn">Logout</button></span>`;
+    $('#logoutBtn').onclick = () => { clearCurrentUser(); updateAuthUI(); };
+  } else {
+    area.innerHTML = `<button class="auth-open-btn" id="openAuthBtn">Login / Sign Up</button>`;
+    $('#openAuthBtn').onclick = () => openAuthModal('login');
+  }
+}
 
-    <section class="collection" id="collection">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">01 / Collection</p>
-          <h2>Built slowly.<br><em>Carried daily.</em></h2>
-        </div>
-        <p>Four essentials, made to order in the hide and hardware you choose.</p>
-      </div>
-      <div class="product-grid" id="productGrid"></div>
-    </section>
+// ---- Modal open/close + tab & step switching ----
+function openAuthModal(tab){
+  clearAuthErrors();
+  $('#authModal')?.classList.add('open');
+  $('#backdrop')?.classList.add('open');
+  switchAuthTab(tab || 'login');
+}
+function closeAuthModal(){
+  $('#authModal')?.classList.remove('open');
+  $('#backdrop')?.classList.remove('open');
+  pendingCheckoutAfterAuth = false;
+}
+function clearAuthErrors(){
+  ['loginError','signupError','fpStep1Error','fpStep2Error'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent=''; });
+}
+function switchAuthTab(tab){
+  clearAuthErrors();
+  document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.authTab === tab));
+  document.querySelectorAll('.auth-panel').forEach(p => p.classList.remove('active'));
+  if(tab === 'login') $('#loginForm')?.classList.add('active');
+  if(tab === 'signup') $('#signupForm')?.classList.add('active');
+}
+function showForgotStep1(){
+  clearAuthErrors();
+  document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.auth-panel').forEach(p => p.classList.remove('active'));
+  $('#forgotStep1Form')?.classList.add('active');
+}
+function showForgotStep2(){
+  clearAuthErrors();
+  document.querySelectorAll('.auth-panel').forEach(p => p.classList.remove('active'));
+  $('#forgotStep2Form')?.classList.add('active');
+}
 
-    <section class="studio" id="studio">
-      <div class="studio-preview">
-        <img id="previewImage" alt="Selected product preview">
-        <span id="previewTint"></span>
-        <div class="preview-label">AFS<br><small>Made in studio</small></div>
-      </div>
-      <div class="studio-controls">
-        <p class="eyebrow">02 / Studio</p>
-        <h2>Make it yours.</h2>
-        <p>Choose a product, then use a replacement image or color code added by the studio.</p>
-        <div class="current-piece">
-          <span>Current piece</span>
-          <strong id="selectedName"></strong>
-          <b id="selectedPrice"></b>
-        </div>
-        <div id="optionGroups"></div>
-        <button class="button gold full" id="addToCart">Add to cart <span id="addPrice"></span> +</button>
-      </div>
-    </section>
+// ---- Validation helpers ----
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_RE = /^0\d{10}$/;
+const POSTAL_RE = /^\d{4,6}$/;
 
-    <section class="orders-section" id="orders">
-      <div class="orders-bg-text">TRACK</div>
-      <div class="orders-inner">
-        <div class="orders-left">
-          <p class="eyebrow">03 / Order desk</p>
-          <h2 class="orders-heading">Keep an eye<br><em>on the journey.</em></h2>
-          <p class="orders-sub">Enter your order number below to see the latest update — whether it's being reviewed, packed, shipped, or delivered to your door.</p>
-          <div class="orders-steps">
-            <div class="orders-step"><span class="step-dot">01</span><span>Order placed</span></div>
-            <div class="orders-step-line"></div>
-            <div class="orders-step"><span class="step-dot">02</span><span>Accepted</span></div>
-            <div class="orders-step-line"></div>
-            <div class="orders-step"><span class="step-dot">03</span><span>Shipped</span></div>
-            <div class="orders-step-line"></div>
-            <div class="orders-step"><span class="step-dot">04</span><span>Delivered</span></div>
+// ---- Signup ----
+// Pending signup data stored here while OTP is being verified
+let pendingSignupData = null;
+
+async function handleSignup(e){
+  e.preventDefault();
+  const name = $('#signupName').value.trim();
+  const email = $('#signupEmail').value.trim().toLowerCase();
+  const phone = $('#signupPhone').value.trim();
+  const citySel = $('#signupCity').value;
+  const city = citySel === 'Other' ? $('#signupCityOther').value.trim() : citySel;
+  const address = $('#signupAddress').value.trim();
+  const postal = $('#signupPostal').value.trim();
+  const password = $('#signupPassword').value;
+  const confirm = $('#signupConfirmPassword').value;
+  const errEl = $('#signupError');
+
+  if(!name || !email || !phone || !city || !address || !postal || !password){ errEl.textContent = 'Sab fields fill karo.'; return; }
+  if(!EMAIL_RE.test(email)){ errEl.textContent = 'Email sahi format mein daalo.'; return; }
+  if(!PHONE_RE.test(phone)){ errEl.textContent = 'Phone number bilkul 11 digits ka hona chahiye, e.g. 03001234567. Kam ya zyada numbers nahi chalenge.'; return; }
+  if(!POSTAL_RE.test(postal)){ errEl.textContent = 'Postal code sahi daalo (4-6 digits).'; return; }
+  if(password.length < 6){ errEl.textContent = 'Password kam se kam 6 characters ka ho.'; return; }
+  if(password !== confirm){ errEl.textContent = 'Password match nahi ho raha.'; return; }
+
+  const submitBtn = $('#signupForm button[type=submit]');
+  if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Please wait...'; }
+  try{
+    const existing = await getUserByEmail(email);
+    if(existing){ errEl.textContent = 'Ye email pehle se registered hai. Login karo.'; return; }
+
+    // Generate and send OTP
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    await saveOtp(email, code);
+    await sendOtpEmail(email, name, code);
+
+    // Save pending signup data to complete after OTP verify
+    const salt = randomSalt();
+    const passwordHash = await hashPassword(password, salt);
+    pendingSignupData = { name, email, phone, address, city, postal, salt, passwordHash };
+
+    // Show OTP verification panel
+    showSignupOtpStep(email);
+  } catch(err){
+    console.error('Signup error:', err);
+    const detail = err?.text || err?.message || (typeof err === 'string' ? err : JSON.stringify(err));
+    errEl.textContent = 'Signup nahi ho saka: ' + detail;
+  } finally {
+    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = 'Sign Up →'; }
+  }
+}
+
+function showSignupOtpStep(email){
+  clearAuthErrors();
+  document.querySelectorAll('.auth-panel').forEach(p => p.classList.remove('active'));
+  const panel = $('#signupOtpForm');
+  if(panel){
+    panel.classList.add('active');
+    const hint = panel.querySelector('.signup-otp-hint');
+    if(hint) hint.textContent = `OTP bheja gaya: ${email}`;
+  }
+}
+
+async function handleSignupOtp(e){
+  e.preventDefault();
+  const errEl = $('#signupOtpError');
+  if(!pendingSignupData){ errEl.textContent = 'Session expire ho gaya. Dobara signup karo.'; return; }
+  const entered = $('#signupOtpInput').value.trim();
+  const { email } = pendingSignupData;
+
+  const submitBtn = $('#signupOtpForm button[type=submit]');
+  if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Verifying...'; }
+  try{
+    const record = await getOtp(email);
+    if(!record){ errEl.textContent = 'OTP nahi mila. Dobara signup karo.'; return; }
+    if(Date.now() > record.expiresAt){ errEl.textContent = 'OTP expire ho gaya. Dobara signup karo.'; clearOtp(email); return; }
+    if(record.code !== entered){ errEl.textContent = 'OTP galat hai. Dobara check karo.'; return; }
+
+    // OTP correct — create account
+    await clearOtp(email);
+    const { name, phone, address, city, postal, salt, passwordHash } = pendingSignupData;
+    const user = { name, email, phone, address, city, postal, salt, passwordHash, createdAt: new Date().toISOString() };
+    await saveUser(user);
+    setCurrentUser({ name, email, phone, address, city, postal });
+    pendingSignupData = null;
+    updateAuthUI();
+    const shouldContinueToCheckout = pendingCheckoutAfterAuth;
+    closeAuthModal();
+    if(shouldContinueToCheckout) openCheckout();
+  } catch(err){
+    console.error('Signup OTP error:', err);
+    errEl.textContent = 'Verification nahi ho saka. Dobara try karo.';
+  } finally {
+    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = 'Verify & Sign Up →'; }
+  }
+}
+
+// ---- Login ----
+async function handleLogin(e){
+  e.preventDefault();
+  const email = $('#loginEmail').value.trim().toLowerCase();
+  const password = $('#loginPassword').value;
+  const errEl = $('#loginError');
+  if(!email || !password){ errEl.textContent = 'Email aur password dono daalo.'; return; }
+
+  const submitBtn = $('#loginForm button[type=submit]');
+  if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Please wait...'; }
+  try{
+    const user = await getUserByEmail(email);
+    if(!user){ errEl.textContent = 'Account nahi mila. Sign up karo.'; return; }
+    const hash = await hashPassword(password, user.salt);
+    if(hash !== user.passwordHash){ errEl.textContent = 'Email ya password galat hai.'; return; }
+    setCurrentUser({ name:user.name, email:user.email, phone:user.phone, address:user.address, city:user.city, postal:user.postal });
+    updateAuthUI();
+    const shouldContinueToCheckout = pendingCheckoutAfterAuth;
+    closeAuthModal();
+    if(shouldContinueToCheckout) openCheckout();
+  } catch(err){
+    console.error('Login error:', err);
+    const detail = err?.text || err?.message || (typeof err === 'string' ? err : JSON.stringify(err));
+    errEl.textContent = 'Login nahi ho saka: ' + detail;
+  } finally {
+    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = 'Login →'; }
+  }
+}
+
+// ---- Forgot password: step 1, send OTP ----
+async function handleSendOtp(e){
+  e.preventDefault();
+  const email = $('#fpEmail').value.trim().toLowerCase();
+  const errEl = $('#fpStep1Error');
+  if(!EMAIL_RE.test(email)){ errEl.textContent = 'Email sahi format mein daalo.'; return; }
+
+  const submitBtn = $('#forgotStep1Form button[type=submit]');
+  if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Sending...'; }
+  try{
+    const user = await getUserByEmail(email);
+    if(!user){ errEl.textContent = 'Ye email registered nahi hai.'; return; }
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    await saveOtp(email, code);
+    await sendOtpEmail(email, user.name, code);
+    fpEmailForReset = email;
+    showForgotStep2();
+  } catch(err){
+    console.error('OTP send error:', err);
+    const detail = err?.text || err?.message || (typeof err === 'string' ? err : JSON.stringify(err));
+    errEl.textContent = 'OTP email nahi bhej saka: ' + detail;
+  } finally {
+    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = 'Send OTP →'; }
+  }
+}
+
+// ---- Forgot password: step 2, verify OTP + set new password ----
+async function handleResetPassword(e){
+  e.preventDefault();
+  const enteredCode = $('#fpOtp').value.trim();
+  const newPassword = $('#fpNewPassword').value;
+  const confirm = $('#fpConfirmPassword').value;
+  const errEl = $('#fpStep2Error');
+  if(newPassword.length < 6){ errEl.textContent = 'Password kam se kam 6 characters ka ho.'; return; }
+  if(newPassword !== confirm){ errEl.textContent = 'Password match nahi ho raha.'; return; }
+
+  const submitBtn = $('#forgotStep2Form button[type=submit]');
+  if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Please wait...'; }
+  try{
+    const otpRecord = await getOtp(fpEmailForReset);
+    if(!otpRecord || otpRecord.code !== enteredCode){ errEl.textContent = 'OTP galat hai.'; return; }
+    if(Date.now() > otpRecord.expiresAt){ errEl.textContent = 'OTP expire ho gaya. Dobara bhejo.'; return; }
+    const salt = randomSalt();
+    const passwordHash = await hashPassword(newPassword, salt);
+    await updateUserFields(fpEmailForReset, { passwordHash, salt });
+    await clearOtp(fpEmailForReset);
+    switchAuthTab('login');
+    $('#loginEmail').value = fpEmailForReset;
+    $('#loginError').textContent = 'Password change ho gaya — ab login karo.';
+  } catch(err){
+    console.error('Reset password error:', err);
+    const detail = err?.text || err?.message || (typeof err === 'string' ? err : JSON.stringify(err));
+    errEl.textContent = 'Kuch ghalat ho gaya: ' + detail;
+  } finally {
+    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = 'Reset password →'; }
+  }
+}
+
+function wireAuthModal(){
+  document.querySelectorAll('.auth-tab').forEach(t => t.onclick = () => switchAuthTab(t.dataset.authTab));
+  $('#loginForm')?.addEventListener('submit', handleLogin);
+  $('#signupForm')?.addEventListener('submit', handleSignup);
+  $('#signupOtpForm')?.addEventListener('submit', handleSignupOtp);
+  $('#forgotStep1Form')?.addEventListener('submit', handleSendOtp);
+  $('#forgotStep2Form')?.addEventListener('submit', handleResetPassword);
+  $('#forgotPasswordLink')?.addEventListener('click', e => { e.preventDefault(); showForgotStep1(); });
+  $('#backToLoginLink')?.addEventListener('click', e => { e.preventDefault(); switchAuthTab('login'); });
+  document.querySelector('[data-close-auth]')?.addEventListener('click', closeAuthModal);
+  $('#signupCity')?.addEventListener('change', () => {
+    $('#signupCityOther').style.display = $('#signupCity').value === 'Other' ? 'block' : 'none';
+  });
+}
+/* ============================================================
+   user.js
+   Logic for the customer-facing storefront (user.html).
+   Load order in the HTML: config.js -> storage.js -> user.js
+   ============================================================ */
+
+let products = [];
+let selected = null;
+let selections = {};
+let cart = getCart();
+let orders = [];
+
+function selectedOptions(){
+  return selected.groups.map((g,i) => g.options[selections[i]||0]).filter(Boolean);
+}
+
+function renderProducts(){
+  const grid = $('#productGrid');
+  if(!grid) return;
+  grid.innerHTML = products.map(p => `<article class="product-card"><img src="${p.image}" alt="${p.name}"><div><small>${p.category} / Made to order</small><h3>${p.name}</h3><p>${p.description}</p><button data-product="${p.id}">Customize & view ↗</button></div></article>`).join('');
+  grid.querySelectorAll('button').forEach(b => b.onclick = () => chooseProduct(products.find(p => p.id === b.dataset.product)));
+}
+
+function chooseProduct(p){
+  selected = p;
+  selections = {};
+  renderStudio();
+  document.getElementById('studio').scrollIntoView({behavior:'smooth'});
+}
+
+function renderStudio(){
+  if(!$('#selectedName')) return;
+  $('#selectedName').textContent = selected.name;
+  $('#optionGroups').innerHTML = selected.groups.map((g,gi) => `<div class="option-group"><strong>${String(gi+1).padStart(2,'0')} / ${g.name}</strong><div class="option-list">${g.options.map((o,oi) => `<button class="${(selections[gi]||0)===oi?'active':''}" data-group="${gi}" data-option="${oi}">${o.hex?`<span class="swatch" style="background:${o.hex}"></span>`:''}${o.name}${o.price?` +${money(o.price)}`:''}</button>`).join('')}</div></div>`).join('');
+  $('#optionGroups').querySelectorAll('button').forEach(b => b.onclick = () => { selections[+b.dataset.group] = +b.dataset.option; renderStudio(); });
+
+  const opts = selectedOptions();
+  const price = selected.price + opts.reduce((a,o) => a + (+o.price||0), 0);
+  const color = opts.find(o => o.hex)?.hex || 'transparent';
+  const replacement = opts.find(o => o.image)?.image;
+
+  $('#selectedPrice').textContent = money(price);
+  $('#addPrice').textContent = money(price);
+  $('#previewImage').src = replacement || selected.image;
+  $('#previewImage').alt = selected.name + ' preview';
+
+  const img = $('#previewImage');
+  $('#previewTint').style.background = 'transparent';
+  $('#previewTint').style.opacity = '0';
+
+  if(color === 'transparent'){
+    if(img) img.style.filter = 'none';
+  } else {
+    // Brown leather base = roughly hue 25deg, sepia(1) gives ~37deg
+    // We need to rotate FROM that base TO target hue
+    const r = parseInt(color.slice(1,3),16), g = parseInt(color.slice(3,5),16), b = parseInt(color.slice(5,7),16);
+    const max = Math.max(r,g,b), min = Math.min(r,g,b), d = max - min;
+    let targetHue = 0;
+    if(d !== 0){
+      if(max === r) targetHue = ((g-b)/d) % 6;
+      else if(max === g) targetHue = (b-r)/d + 2;
+      else targetHue = (r-g)/d + 4;
+      targetHue = Math.round(targetHue * 60);
+      if(targetHue < 0) targetHue += 360;
+    }
+    // sepia() produces hue ~37deg. Rotate from 37 to target.
+    const rotate = targetHue - 37;
+    // Saturation: grey/black = low, vivid = high
+    const sat = d === 0 ? 0 : Math.round((d/max) * 180);
+    // Brightness: dark colors need less brightness
+    const lum = (r*0.299 + g*0.587 + b*0.114) / 255;
+    const bri = Math.max(0.3, Math.min(1.1, lum*1.4));
+    // Black/very dark: just desaturate + darken, no hue rotate needed
+    if(lum < 0.12){
+      if(img) img.style.filter = `grayscale(1) brightness(${(lum*3).toFixed(2)}) contrast(1.1)`;
+    } else if(d/max < 0.15){
+      // Near grey/neutral: sepia + slight rotate + low sat
+      if(img) img.style.filter = `sepia(1) hue-rotate(${rotate}deg) saturate(0.4) brightness(${bri.toFixed(2)})`;
+    } else {
+      // Full color leather
+      if(img) img.style.filter = `sepia(1) hue-rotate(${rotate}deg) saturate(${(sat/60).toFixed(2)}) brightness(${bri.toFixed(2)})`;
+    }
+  }
+}
+
+function renderCart(){
+  const box = $('#cartItems');
+  if(!box) return;
+  $('#cartCount').textContent = String(cart.length).padStart(2,'0');
+  box.innerHTML = cart.length ? cart.map((i,n) => `<div class="cart-row"><img src="${i.image}" alt="${i.name}"><div><strong>${i.name}</strong><small>${i.options.join(' · ')||'Standard finish'}<br>${money(i.price)}</small></div><button class="close" data-remove="${n}">×</button></div>`).join('') : '<p>Your bag is empty. Choose a piece from the collection.</p>';
+  cart.forEach((_,n) => box.querySelector(`[data-remove="${n}"]`)?.addEventListener('click', () => { cart.splice(n,1); saveCart(); }));
+  $('#cartTotal').textContent = money(cart.reduce((a,i) => a + i.price, 0));
+}
+
+function saveCart(){
+  saveCartData(cart);
+  renderCart();
+}
+
+function openCart(){ renderCart(); $('#cartDrawer').classList.add('open'); $('#backdrop').classList.add('open'); }
+function closeCart(){ $('#cartDrawer').classList.remove('open'); $('#backdrop').classList.remove('open'); }
+
+function addCurrent(){
+  const opts = selectedOptions();
+  cart.push({
+    name: selected.name,
+    image: selected.image,
+    price: selected.price + opts.reduce((a,o) => a + (+o.price||0), 0),
+    options: opts.map(o => o.name)
+  });
+  saveCart();
+  openCart();
+}
+
+function openCheckout(){
+  if(!cart.length) return alert('Your bag is empty.');
+  const user = getCurrentUser();
+  if(!user){
+    closeCart();
+    pendingCheckoutAfterAuth = true;
+    openAuthModal('signup');
+    return;
+  }
+  closeCart();
+  $('#customerName').value = user.name || '';
+  $('#customerPhone').value = user.phone || '';
+  $('#customerAddress').value = user.address || '';
+  $('#customerPostal').value = user.postal || '';
+  $('#checkoutModal').classList.add('open');
+  $('#backdrop').classList.add('open');
+}
+function closeCheckout(){ $('#checkoutModal').classList.remove('open'); $('#backdrop').classList.remove('open'); }
+
+function renderMyOrders(){
+  const box = $('#myOrdersList');
+  if(!box) return;
+  const user = getCurrentUser();
+  const mine = user ? orders.filter(o => o.customerEmail === user.email) : [];
+  if(!mine.length){
+    box.innerHTML = `<div class="no-orders-msg">
+      <span class="no-orders-icon">🛍</span>
+      <strong>Koi order nahi abhi tak</strong>
+      <p>Collection se apna piece choose karo<br>aur customize karke order karo.</p>
+    </div>`;
+    return;
+  }
+  const statusDot = {'Pending acceptance':'⏳','Accepted':'✅','Shipped':'🚚','Delivered':'📦','Cancelled':'❌'};
+  box.innerHTML = [...mine].reverse().map(o => {
+    const sc = statusColor(o.status);
+    const date = new Date(o.createdAt).toLocaleDateString('en-PK', {day:'numeric',month:'short',year:'numeric'});
+    return `<div class="my-order-card status-${sc}">
+      <div class="my-order-card-accent"></div>
+      <div class="my-order-card-inner">
+        <div class="my-order-card-head">
+          <div>
+            <div class="my-order-id">${o.id}</div>
+            <div class="my-order-date">${date} · ${o.payment||'COD'}</div>
           </div>
+          <div class="my-order-status-badge">${statusDot[o.status]||'⏳'} ${o.status}</div>
         </div>
-        <div class="orders-right">
-          <div class="track-card">
-            <p class="eyebrow" style="margin-bottom:18px;">Enter order ID</p>
-            <form id="trackForm">
-              <div class="track-input-wrap">
-                <input id="trackId" placeholder="AFS-2026-0001" required autocomplete="off">
-                <button class="track-submit-btn" type="submit">Track <span>→</span></button>
-              </div>
-            </form>
-            <div id="trackResult" class="track-result-card" style="display:none"></div>
-            <div class="track-hint">Your order ID was sent with your order confirmation.</div>
-          </div>
+        <div class="my-order-divider"></div>
+        <div class="my-order-items-list">
+          ${o.items.map(i => `<div class="my-order-item-row"><span class="my-order-item-name">${i.name}${i.options?.length?' <span style="opacity:.6;font-size:10px;">('+i.options.join(', ')+')</span>':''}</span><span class="my-order-item-price">${money(i.price)}</span></div>`).join('')}
         </div>
-      </div>
-    </section>
-  </main>
-  <!-- ================= AUTH MODAL (Login / Sign up / Forgot password) ================= -->
-  <div class="modal auth-modal" id="authModal">
-    <button class="close" data-close-auth>×</button>
-    <div class="auth-tabs">
-      <button class="auth-tab active" data-auth-tab="login">Login</button>
-      <button class="auth-tab" data-auth-tab="signup">Sign Up</button>
-    </div>
-
-    <form id="loginForm" class="auth-panel active">
-      <p class="eyebrow">Welcome back</p>
-      <h2>Login to your account</h2>
-      <input id="loginEmail" type="email" placeholder="Email address" required autocomplete="email">
-      <input id="loginPassword" type="password" placeholder="Password" required autocomplete="current-password">
-      <p class="auth-error" id="loginError"></p>
-      <button class="button gold full" type="submit">Login →</button>
-      <a href="#" id="forgotPasswordLink" class="auth-link">Forgot password?</a>
-    </form>
-
-    <form id="signupForm" class="auth-panel">
-      <p class="eyebrow">New here?</p>
-      <h2>Create your account</h2>
-      <p class="auth-note">Order place karne ke liye ek account chahiye — 1 minute lagega.</p>
-      <input id="signupName" placeholder="Full name" required autocomplete="name">
-      <input id="signupEmail" type="email" placeholder="Email address" required autocomplete="email">
-      <input id="signupPhone" placeholder="Phone number, e.g. 03001234567" required autocomplete="tel">
-      <select id="signupCity" required>
-      <option value="">Select city</option>
-      <option>Karachi</option>
-      <option>Lahore</option>
-      <option>Islamabad</option>
-      <option>Rawalpindi</option>
-      <option>Faisalabad</option>
-      <option>Multan</option>
-      <option>Peshawar</option>
-      <option>Quetta</option>
-      <option>Sialkot</option>
-      <option>Gujranwala</option>
-      <option>Hyderabad</option>
-      <option>Bahawalpur</option>
-      <option>Sargodha</option>
-      <option>Sukkur</option>
-      <option>Sheikhupura</option>
-      <option>Gujrat</option>
-      <option>Kasur</option>
-      <option>Sahiwal</option>
-      <option>Okara</option>
-      <option>Abbottabad</option>
-      <option>Mardan</option>
-      <option>Muzaffargarh</option>
-      <option>Jhang</option>
-      <option>Chiniot</option>
-      <option>Mingora</option>
-      <option value="Other">Other</option>
-      </select>
-      <input id="signupCityOther" placeholder="Apna city likho" style="display:none">
-      <textarea id="signupAddress" placeholder="Complete address" required></textarea>
-      <input id="signupPostal" placeholder="Postal code" required>
-      <input id="signupPassword" type="password" placeholder="Password (min 6 characters)" required autocomplete="new-password">
-      <input id="signupConfirmPassword" type="password" placeholder="Confirm password" required autocomplete="new-password">
-      <p class="auth-error" id="signupError"></p>
-      <button class="button gold full" type="submit">Sign Up →</button>
-    </form>
-
-    <form id="forgotStep1Form" class="auth-panel">
-      <p class="eyebrow">Reset password</p>
-      <h2>Enter your email</h2>
-      <p class="auth-note">Aapke email par ek 6-digit OTP code bhejenge.</p>
-      <input id="fpEmail" type="email" placeholder="Email address" required>
-      <p class="auth-error" id="fpStep1Error"></p>
-      <button class="button gold full" type="submit">Send OTP →</button>
-      <a href="#" id="backToLoginLink" class="auth-link">Back to login</a>
-    </form>
-
-    <form id="forgotStep2Form" class="auth-panel">
-      <p class="eyebrow">Check your email</p>
-      <h2>Enter the OTP & new password</h2>
-      <input id="fpOtp" placeholder="6-digit OTP" maxlength="6" required>
-      <input id="fpNewPassword" type="password" placeholder="New password" required autocomplete="new-password">
-      <input id="fpConfirmPassword" type="password" placeholder="Confirm new password" required autocomplete="new-password">
-      <p class="auth-error" id="fpStep2Error"></p>
-      <button class="button gold full" type="submit">Reset password →</button>
-    </form>
-
-    <form id="signupOtpForm" class="auth-panel">
-      <p class="eyebrow">Verify your email</p>
-      <h2>OTP Enter karo</h2>
-      <p class="signup-otp-hint" style="color:var(--muted);font-size:12px;margin:0;"></p>
-      <input id="signupOtpInput" placeholder="6-digit OTP" maxlength="6" required autocomplete="one-time-code">
-      <p class="auth-error" id="signupOtpError"></p>
-      <button class="button gold full" type="submit">Verify & Sign Up →</button>
-    </form>
-  </div>
-  <!-- My Orders Drawer -->
-  <aside class="drawer" id="myOrdersDrawer" style="overflow-y:auto;">
-    <button class="close" id="closeMyOrders">×</button>
-    <p class="eyebrow" style="margin-top:8px;">Your purchases</p>
-    <h2 style="margin-bottom:24px;">My <em style="font-family:var(--serif);font-style:italic;color:var(--gold);">Orders</em></h2>
-    <div id="myOrdersList"></div>
-  </aside>
-  <!-- Password modal (Studio access) -->
-  <div class="pw-modal" id="pwModal">
-    <div class="pw-box">
-      <p class="eyebrow">Studio Access</p>
-      <h3>Enter password</h3>
-      <input type="password" id="pwInput" placeholder="••••••••" maxlength="30">
-      <p class="pw-error" id="pwError"></p>
-      <button class="pw-submit" id="pwSubmit">Unlock →</button>
-      <button class="pw-cancel" id="pwCancel">Cancel</button>
-    </div>
-  </div>
-  <footer>
-    <a class="brand" href="#top"><span class="brand-mark">AFS</span><span>AFS <i>Leather</i></span></a>
-    <p>Custom leather goods for a life well carried.</p>
-    <a href="#studio">Back to studio ↗</a>
-  </footer>
-  <aside class="drawer" id="cartDrawer">
-    <button class="close" data-close-cart>×</button>
-    <p class="eyebrow">YOUR SELECTION</p>
-    <h2>Your bag</h2>
-    <div id="cartItems"></div>
-    <div class="cart-total"><span>Estimated total</span><b id="cartTotal">Rs. 0</b></div>
-    <button class="button gold full" id="checkout">Proceed to checkout →</button>
-  </aside>
-  <div class="modal" id="checkoutModal">
-    <button class="close" data-close-checkout>×</button>
-    <p class="eyebrow">CONFIRM YOUR ORDER</p>
-    <h2>Let's send it<br><em>to you.</em></h2>
-    <form id="checkoutForm">
-      <input id="customerName" placeholder="Full name" required>
-      <input id="customerPhone" placeholder="Phone number" required>
-      <textarea id="customerAddress" placeholder="Complete delivery address" required></textarea>
-      <input id="customerPostal" placeholder="Postal code" required>
-      <select id="payment">
-        <option>Cash on Delivery (COD)</option>
-        <option>JazzCash</option>
-        <option>EasyPaisa</option>
-      </select>
-      <button class="button gold full" type="submit">Place order →</button>
-    </form>
-    <p class="checkout-note">Demo checkout — no payment is charged.</p>
-  </div>
-
-  <div class="backdrop" id="backdrop"></div>
-
-  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-  <script src="config.js"></script>
-  <script src="storage.js"></script>
-  <script src="api.js"></script>
-  <script src="user.js"></script>
-</body>
-          </html>
-  
+        <div class="my-order-total-row">
+          <span class="my-order-total-label">Total</span>
+          <span class="my-order-total-amount">${money(o.total)}</span>
+        </div>
+       
